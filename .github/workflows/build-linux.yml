@@ -1,0 +1,68 @@
+name: Build Linux
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  build-linux:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install pyinstaller PyQt6 gallery-dl
+
+      - name: Download gallery-dl binary
+        run: python download_gallery_dl.py
+
+      - name: Build with PyInstaller
+        run: pyinstaller pixarchive.spec --noconfirm
+
+      - name: Create tarball
+        run: cd dist && tar -czf pixarchive-linux.tar.gz pixarchive/
+
+      - name: Install appimagetool
+        run: |
+          wget -q https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage -O /usr/local/bin/appimagetool
+          chmod +x /usr/local/bin/appimagetool
+
+      - name: Build AppImage
+        run: |
+          APPDIR=dist/pixarchive.AppDir
+          mkdir -p "$APPDIR/usr/bin"
+          cp -r dist/pixarchive/* "$APPDIR/usr/bin/"
+          printf '#!/bin/bash\nSELF=$(readlink -f "$0")\nHERE=$(dirname "$SELF")\nexec "$HERE/usr/bin/pixarchive" "$@"\n' > "$APPDIR/AppRun"
+          chmod +x "$APPDIR/AppRun"
+          printf '[Desktop Entry]\nName=PixArchive\nComment=Download image galleries from 200+ sites\nExec=pixarchive\nIcon=pixarchive\nType=Application\nCategories=Network;FileTransfer;\n' > "$APPDIR/pixarchive.desktop"
+          cp assets/icon.png "$APPDIR/pixarchive.png"
+          ARCH=x86_64 appimagetool "$APPDIR" dist/pixarchive-linux.AppImage
+
+      - name: Upload tarball
+        uses: actions/upload-artifact@v4
+        with:
+          name: pixarchive-linux-tar
+          path: dist/pixarchive-linux.tar.gz
+          retention-days: 30
+
+      - name: Upload AppImage
+        uses: actions/upload-artifact@v4
+        with:
+          name: pixarchive-linux-appimage
+          path: dist/pixarchive-linux.AppImage
+          retention-days: 30
+
+      - name: Attach to GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/pixarchive-linux.tar.gz
+            dist/pixarchive-linux.AppImage
