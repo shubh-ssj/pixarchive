@@ -6,8 +6,9 @@ into ./bin/ so that build.bat / build.sh can bundle it into the executable.
 Run this ONCE before building:
     python download_gallery_dl.py
 
-The binary is fetched from the official GitHub releases page:
-    https://github.com/mikf/gallery-dl/releases/latest
+As of v1.32.0, gallery-dl's active development and releases have moved to
+Codeberg. Binaries are fetched from:
+    https://codeberg.org/mikf/gallery-dl/releases
 """
 import json
 import os
@@ -15,14 +16,14 @@ import stat
 import sys
 import urllib.request
 
-API_URL  = "https://api.github.com/repos/mikf/gallery-dl/releases/latest"
-BIN_DIR  = os.path.join(os.path.dirname(os.path.abspath(__file__)), "bin")
+API_URL = "https://codeberg.org/api/v1/repos/mikf/gallery-dl/releases?limit=1"
+BIN_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "bin")
 
-# Asset name → platform match
+# Asset name per platform (as published on Codeberg releases)
 ASSET_MAP = {
-    "win32":  "gallery-dl.exe",
-    "darwin": "gallery-dl",          # macOS universal binary
-    "linux":  "gallery-dl",
+    "win32":  "gallery-dl.exe",   # Windows 64-bit
+    "darwin": "gallery-dl.bin",   # macOS (same binary as Linux)
+    "linux":  "gallery-dl.bin",   # Linux
 }
 
 
@@ -45,56 +46,55 @@ def main():
         sys.exit(1)
 
     asset_name = ASSET_MAP[platform]
-    out_name   = "gallery-dl.exe" if platform == "win32" else "gallery-dl"
-    out_path   = os.path.join(BIN_DIR, out_name)
+    # Output filename: always gallery-dl.exe on Windows, gallery-dl on Unix
+    out_name = "gallery-dl.exe" if platform == "win32" else "gallery-dl"
+    out_path = os.path.join(BIN_DIR, out_name)
 
-    print(f"gallery-dl binary downloader")
+    print("gallery-dl binary downloader")
     print(f"Platform : {platform}")
     print(f"Asset    : {asset_name}")
     print(f"Output   : {out_path}")
     print()
 
-    # ── Fetch latest release info ─────────────────────────────────────────────
-    print("Fetching latest release info from GitHub...")
+    # ── Fetch latest release from Codeberg API ────────────────────────────────
+    print("Fetching latest release info from Codeberg...")
     req = urllib.request.Request(
         API_URL,
         headers={
-            "Accept":     "application/vnd.github+json",
-            "User-Agent": "pixarchive-builder/0.1",
+            "Accept":     "application/json",
+            "User-Agent": "pixarchive-builder/1.0",
         }
     )
     with urllib.request.urlopen(req, timeout=15) as resp:
-        release = json.loads(resp.read())
+        releases = json.loads(resp.read())
 
-    tag     = release.get("tag_name", "unknown")
-    assets  = release.get("assets", [])
+    if not releases:
+        print("[ERROR] No releases found on Codeberg.")
+        sys.exit(1)
+
+    release  = releases[0]
+    tag      = release.get("tag_name", "unknown")
+    assets   = release.get("assets", [])
 
     print(f"Latest release: {tag}")
 
     # ── Find the right asset ──────────────────────────────────────────────────
     download_url = None
+    size_mb      = 0
     for asset in assets:
         name = asset.get("name", "")
-        # Match exactly — gallery-dl.exe or gallery-dl (no extension)
         if name == asset_name:
-            download_url = asset["browser_download_url"]
+            download_url = asset.get("browser_download_url") or asset.get("url")
             size_mb = asset.get("size", 0) / 1_048_576
             print(f"Found asset : {name}  ({size_mb:.1f} MB)")
             break
 
     if not download_url:
-        # Fallback: try the generic binary name
-        for asset in assets:
-            if asset_name in asset.get("name", ""):
-                download_url = asset["browser_download_url"]
-                print(f"Found asset (fallback): {asset['name']}")
-                break
-
-    if not download_url:
         print(f"\n[ERROR] Could not find '{asset_name}' in release {tag}.")
         print("Available assets:")
         for a in assets:
-            print(f"  - {a['name']}")
+            print(f"  - {a.get('name', '?')}")
+        print("\nTip: check https://codeberg.org/mikf/gallery-dl/releases for the correct asset name")
         sys.exit(1)
 
     # ── Download ──────────────────────────────────────────────────────────────
