@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="assets/icon_full.png" alt="PixArchive" height="120"/>
+  <img src="assets/icon.png" alt="PixArchive" height="120"/>
   <br/>
   <strong>PixArchive</strong>
   <br/>
