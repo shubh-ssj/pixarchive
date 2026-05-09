@@ -1,0 +1,42 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.Python
+*.egg-info/
+.eggs/
+dist/
+build/
+*.spec.bak
+
+# PyInstaller output (keep the .spec, ignore the build output)
+dist/
+build/
+
+# gallery-dl binary (downloaded at build time, not committed)
+bin/
+
+# App user data — never commit credentials or personal settings
+~/.pixarchive/
+*.db
+accounts.json
+
+# IDE
+.venv/
+venv/
+.env
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# Test cache
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Inno Setup output
+installer/pixarchive-setup.exe
+installer/Output/
