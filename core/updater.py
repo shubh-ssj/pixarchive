@@ -36,7 +36,7 @@ def _parse_version(v: str) -> tuple[int, ...]:
     return parse_version(v)
 
 
-class _FetchWorker(QObject):
+class _AppFetchWorker(QObject):
     finished = pyqtSignal(str, str)   # (latest_version, release_url)
     failed   = pyqtSignal(str)        # (error_message,)
 
@@ -61,7 +61,7 @@ class _FetchWorker(QObject):
             self.failed.emit(str(e))
 
 
-class UpdateChecker(QObject):
+class AppUpdateChecker(QObject):
     """
     Run a background update check. Connect update_available to show a banner.
 
@@ -75,7 +75,7 @@ class UpdateChecker(QObject):
         super().__init__(parent)
         self._current = current_version
         self._thread  = QThread(self)
-        self._worker  = _FetchWorker()
+        self._worker  = _AppFetchWorker()
         self._worker.moveToThread(self._thread)
         self._thread.started.connect(self._worker.run)
         self._worker.finished.connect(self._on_result)
@@ -145,3 +145,83 @@ class UpdateBanner(QWidget):
 
     def _dismiss(self):
         self.setVisible(False)
+
+
+# ── gallery-dl update checker (original — used by main_window.py) ─────────────
+# Checks whether the installed gallery-dl is up to date by comparing
+# the running version against the latest Codeberg release.
+
+class _GdlFetchWorker(QObject):
+    done   = pyqtSignal(str)   # latest version tag
+    failed = pyqtSignal(str)   # error message
+
+    def run(self):
+        try:
+            req = urllib.request.Request(
+                "https://codeberg.org/api/v1/repos/mikf/gallery-dl/releases?limit=1",
+                headers={"Accept": "application/json", "User-Agent": "PixArchive/1.0"}
+            )
+            with urllib.request.urlopen(req, timeout=_TIMEOUT) as resp:
+                releases = json.loads(resp.read())
+            tag = releases[0].get("tag_name", "") if releases else ""
+            if tag:
+                self.done.emit(tag)
+            else:
+                self.failed.emit("No release found")
+        except Exception as e:
+            self.failed.emit(str(e))
+
+
+class UpdateChecker(QObject):
+    """
+    Checks whether the installed gallery-dl is up to date.
+    Used by main_window.py for both automatic and manual update checks.
+
+    Signals:
+        update_available(installed, latest) — newer version exists
+        up_to_date(installed)               — already on latest
+        check_failed(message)               — network or parse error
+    """
+    update_available = pyqtSignal(str, str)   # (installed_version, latest_version)
+    up_to_date       = pyqtSignal(str)         # (installed_version,)
+    check_failed     = pyqtSignal(str)         # (error_message,)
+
+    def __init__(self, gdl_cmd: str = "gallery-dl", parent=None):
+        super().__init__(parent)
+        self._gdl_cmd = gdl_cmd
+        self._thread  = QThread(self)
+        self._worker  = _GdlFetchWorker()
+        self._worker.moveToThread(self._thread)
+        self._thread.started.connect(self._worker.run)
+        self._worker.done.connect(self._on_latest)
+        self._worker.failed.connect(self._on_fail)
+        self._worker.done.connect(self._thread.quit)
+        self._worker.failed.connect(self._thread.quit)
+        self._thread.finished.connect(self._worker.deleteLater)
+
+    def check(self):
+        """Start the background check."""
+        self._thread.start()
+
+    def _on_latest(self, latest_tag: str):
+        # Get the installed version by running gallery-dl --version
+        try:
+            import subprocess
+            r = subprocess.run(
+                [self._gdl_cmd, "--version"],
+                capture_output=True, text=True, timeout=5
+            )
+            installed = (r.stdout or r.stderr).strip()
+        except Exception:
+            installed = "unknown"
+
+        installed_v = _parse_version(installed)
+        latest_v    = _parse_version(latest_tag)
+
+        if latest_v > installed_v:
+            self.update_available.emit(installed, latest_tag)
+        else:
+            self.up_to_date.emit(installed)
+
+    def _on_fail(self, err: str):
+        self.check_failed.emit(err)
