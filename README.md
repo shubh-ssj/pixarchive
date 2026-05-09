@@ -144,8 +144,6 @@ bash build.sh
 | Accounts | `~/.pixarchive/accounts.json` |
 | gallery-dl config | `%APPDATA%\gallery-dl\config.json` (Windows) · `~/.config/gallery-dl/config.json` (Linux/macOS) |
 
-> **Upgrading from the old gallery-dl GUI?** PixArchive automatically migrates your settings from `~/.gallery-dl-gui/` on first launch — no manual steps needed.
-
 ## Project structure
 
 ```
