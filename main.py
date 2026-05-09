@@ -70,8 +70,8 @@ def main():
 
     # ── Update check (background, non-blocking) ──────────────────────────────
     try:
-        from core.updater import UpdateChecker, UpdateBanner
-        _checker = UpdateChecker(app.applicationVersion(), parent=window)
+        from core.updater import AppUpdateChecker, UpdateBanner
+        _checker = AppUpdateChecker(app.applicationVersion(), parent=window)
 
         def _on_update_available(latest: str, url: str):
             try:
