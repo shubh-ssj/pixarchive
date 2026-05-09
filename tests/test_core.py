@@ -91,9 +91,9 @@ def test_parse_version_with_prefix():
     assert parse_version("gallery-dl 1.26.3") == (1, 26, 3)
 
 def test_gdl_min_version_comparison():
-    assert parse_version("1.25.0") <  GDL_MIN_VERSION
-    assert parse_version("1.26.0") >= GDL_MIN_VERSION
+    assert parse_version("1.26.0") <  GDL_MIN_VERSION
     assert parse_version("1.27.0") >= GDL_MIN_VERSION
+    assert parse_version("1.32.1") >= GDL_MIN_VERSION
 
 def test_version_str():
     assert version_str((1, 26, 0)) == "1.26.0"
