@@ -92,12 +92,6 @@ Download `pixarchive-portable.zip`, extract anywhere, run `pixarchive.exe`. No i
 
 Download `pixarchive.tar.gz` from [Releases](https://github.com/shubh-ssj/pixarchive/releases), extract, and run `./pixarchive`. Or use the `.AppImage` for a fully self-contained single file.
 
-### macOS
-
-Download `pixarchive.tar.gz` or `pixarchive.dmg` from [Releases](https://github.com/shubh-ssj/pixarchive/releases).
-
-> **macOS note:** If Gatekeeper blocks the app, right-click → Open to bypass the warning. For mass distribution, code signing is required.
-
 ## Building from source
 
 See [BUILD.md](BUILD.md) for full instructions. The short version:
