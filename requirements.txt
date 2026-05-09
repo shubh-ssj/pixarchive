@@ -1,0 +1,10 @@
+# PixArchive — Python dependencies
+# Install with: pip install -r requirements.txt
+
+# Qt bindings
+PyQt6>=6.4.0
+
+# gallery-dl itself (the download engine PixArchive uses)
+# 1.26.0 is the minimum recommended — older versions may fail on sites
+# that have updated their APIs
+gallery-dl>=1.26.0
