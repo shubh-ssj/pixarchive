@@ -56,7 +56,7 @@ def version_str(t: tuple[int, ...]) -> str:
 
 # ── gallery-dl version constants ──────────────────────────────────────────────
 
-GDL_MIN_VERSION = (1, 26, 0)
+GDL_MIN_VERSION = (1, 27, 0)
 
 
 # ── Scheduler job helpers (pure logic, no Qt) ─────────────────────────────────
