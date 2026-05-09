@@ -87,8 +87,9 @@ class GdlVersionChecker(QObject):
     def __init__(self, parent=None):
         super().__init__(parent)
         from PyQt6.QtCore import QThread
+        from core.app_settings import resolve_gdl_cmd
         self._thread = QThread(self)
-        self._worker = _CheckWorker("gallery-dl")
+        self._worker = _CheckWorker(resolve_gdl_cmd())
         self._worker.moveToThread(self._thread)
         self._thread.started.connect(self._worker.run)
         self._worker.done.connect(self._on_result)
