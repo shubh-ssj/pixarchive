@@ -69,29 +69,41 @@ def main():
     mgr.set_gdl_cmd(resolve_gdl_cmd())
 
     # ── Update check (background, non-blocking) ──────────────────────────────
-    from core.updater import UpdateChecker, UpdateBanner
-    _checker = UpdateChecker(app.applicationVersion(), parent=window)
+    try:
+        from core.updater import UpdateChecker, UpdateBanner
+        _checker = UpdateChecker(app.applicationVersion(), parent=window)
 
-    def _on_update_available(latest: str, url: str):
-        banner = UpdateBanner(app.applicationVersion(), latest, url, parent=None)
-        outer = window.centralWidget().layout()
-        outer.insertWidget(outer.count() - 1, banner)
+        def _on_update_available(latest: str, url: str):
+            try:
+                banner = UpdateBanner(app.applicationVersion(), latest, url, parent=None)
+                outer = window.centralWidget().layout()
+                outer.insertWidget(outer.count() - 1, banner)
+            except Exception:
+                pass
 
-    _checker.update_available.connect(_on_update_available)
-    _checker.start()
+        _checker.update_available.connect(_on_update_available)
+        _checker.start()
+    except Exception:
+        pass   # update check is best-effort — never crash the app
 
     # ── gallery-dl version check (background, non-blocking) ───────────────────
-    from ui.dialogs.first_run import GdlVersionChecker, GdlOutdatedBanner
+    try:
+        from ui.dialogs.first_run import GdlVersionChecker, GdlOutdatedBanner
 
-    _gdl_checker = GdlVersionChecker(parent=window)
+        _gdl_checker = GdlVersionChecker(parent=window)
 
-    def _on_gdl_outdated(version: str):
-        banner = GdlOutdatedBanner(version)
-        outer = window.centralWidget().layout()
-        outer.insertWidget(outer.count() - 1, banner)
+        def _on_gdl_outdated(version: str):
+            try:
+                banner = GdlOutdatedBanner(version)
+                outer = window.centralWidget().layout()
+                outer.insertWidget(outer.count() - 1, banner)
+            except Exception:
+                pass
 
-    _gdl_checker.outdated.connect(_on_gdl_outdated)
-    _gdl_checker.start()
+        _gdl_checker.outdated.connect(_on_gdl_outdated)
+        _gdl_checker.start()
+    except Exception:
+        pass   # version check is best-effort — never crash the app
 
     sys.exit(app.exec())
 
