@@ -3,6 +3,7 @@ from __future__ import annotations
 from PyQt6.QtCore import QObject, pyqtSignal
 
 from core.job import DownloadJob, JobStatus
+from ui.dialogs.first_run import invalidate_gdl_cmd, FirstRunDialog
 from core.options import DownloadOptions
 
 
@@ -17,8 +18,9 @@ class DownloadManager(QObject):
 
     job_added = pyqtSignal(object)   # DownloadJob
 
-    def __init__(self):
+    def __init__(self, parent=None):
         super().__init__()
+        self._parent = parent          # used as wizard parent window
         self._jobs: list[DownloadJob] = []
         self._max_concurrent: int = 1
         self._gdl_cmd: str = "gallery-dl"
@@ -95,6 +97,7 @@ class DownloadManager(QObject):
         job = DownloadJob(url, opts, gdl_cmd=self._gdl_cmd)
         self._jobs.append(job)
         self.job_added.emit(job)
+        job.gdl_missing.connect(lambda: self._on_gdl_missing())
         job.finished.connect(lambda: self._on_job_finished(job))
         from core.stats import get_stats
         stats = get_stats()
@@ -111,6 +114,11 @@ class DownloadManager(QObject):
         # Clear speed display when the last job finishes
         job.finished.connect(lambda _s=stats: _s.clear_speed() if _s.active_jobs == 0 else None)
         return job
+
+    def _on_gdl_missing(self):
+        """Binary disappeared mid-session — clear cache and re-show the setup wizard."""
+        invalidate_gdl_cmd()
+        FirstRunDialog.check_and_show(parent=self._parent)
 
     def _on_job_finished(self, finished_job: DownloadJob):
         """After any job completes, fill free slots from the queue."""
