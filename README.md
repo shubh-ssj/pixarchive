@@ -3,7 +3,7 @@
   
   <br/><br/>
   
-  <img src="https://raw.githubusercontent.com/shubh-ssj/pixarchive/main/assets/icon_themed.png" width="128" height="128" alt="PixArchive Logo"/>
+  <img src="https://raw.githubusercontent.com/shubh-ssj/pixarchive/main/assets/logo_themed.png" width="128" height="128" alt="PixArchive Logo"/>
   
   <h1 style="margin: 12px 0 8px; font-size: 42px; font-weight: 700; background: linear-gradient(90deg, #FF6363, #FF8A8A); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">
     PixArchive
