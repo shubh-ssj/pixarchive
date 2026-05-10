@@ -1,5 +1,6 @@
 from __future__ import annotations
 import subprocess
+import sys
 
 from PyQt6.QtWidgets import (
     QDialog, QHBoxLayout, QVBoxLayout, QListWidget, QListWidgetItem,
@@ -674,7 +675,8 @@ class SettingsDialog(QDialog):
     def _detect_gdl(self, silent: bool = False):
         cmd = self.gdl_path.text().strip() if hasattr(self, "gdl_path") and self.gdl_path.text().strip() else "gallery-dl"
         try:
-            r = subprocess.run([cmd, "--version"], capture_output=True, text=True, timeout=5)
+            _extra = {"creationflags": subprocess.CREATE_NO_WINDOW} if sys.platform == "win32" else {}
+            r = subprocess.run([cmd, "--version"], capture_output=True, text=True, timeout=5, **_extra)
             v = (r.stdout or r.stderr).strip()
             if hasattr(self, "gdl_version_lbl"):
                 # FIX #8: version warning
