@@ -13,9 +13,51 @@ import os
 # Bump this when a site-breaking gallery-dl release is known.
 from core.utils import GDL_MIN_VERSION as _GDL_MIN_VERSION, parse_version as _parse_version, version_str as _version_str
 
+CODEBERG_RELEASES_URL = "https://codeberg.org/gallery-dl/gallery-dl/releases"
+
+# In-memory cache of the last confirmed-working gallery-dl command.
+# Set on wizard success or after a download completes without error.
+# Cleared by invalidate_gdl_cmd() when a download failure suggests
+# gallery-dl is broken or missing, so the next check re-runs the wizard.
+_confirmed_cmd: str | None = None
+
+
+def get_confirmed_cmd() -> str | None:
+    """Return the cached gallery-dl command, or None if not yet confirmed."""
+    return _confirmed_cmd
+
+
+def confirm_gdl_cmd(cmd: str) -> None:
+    """
+    Call this after a successful download to cache the working command.
+    Subsequent check_and_show() calls will skip all checks and return True
+    immediately until invalidate_gdl_cmd() is called.
+    """
+    global _confirmed_cmd
+    _confirmed_cmd = cmd
+
+
+def invalidate_gdl_cmd() -> None:
+    """
+    Call this when a download fails in a way that suggests gallery-dl is
+    missing or broken. The next check_and_show() will re-run the wizard.
+    """
+    global _confirmed_cmd
+    _confirmed_cmd = None
+
+
 def _parse_gdl_version(v: str) -> tuple[int, ...]:
     """Delegate to core.utils.parse_version — tested independently of Qt."""
     return _parse_version(v)
+
+
+def _pip_available() -> bool:
+    """Return True if pip is usable in the current Python environment."""
+    try:
+        import importlib.util
+        return importlib.util.find_spec("pip") is not None
+    except Exception:
+        return False
 
 from PyQt6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
@@ -37,9 +79,11 @@ class _CheckWorker(QObject):
 
     def run(self):
         try:
+            _extra = {"creationflags": subprocess.CREATE_NO_WINDOW} if sys.platform == "win32" else {}
             r = subprocess.run(
                 [self._cmd, "--version"],
-                capture_output=True, text=True, timeout=8
+                capture_output=True, text=True, timeout=8,
+                **_extra,
             )
             raw = (r.stdout or r.stderr).strip()
             if raw:
@@ -58,10 +102,12 @@ class _InstallWorker(QObject):
 
     def run(self):
         try:
+            _extra = {"creationflags": subprocess.CREATE_NO_WINDOW} if sys.platform == "win32" else {}
             proc = subprocess.Popen(
                 [sys.executable, "-m", "pip", "install", "--upgrade", "gallery-dl"],
                 stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                text=True, encoding="utf-8", errors="replace"
+                text=True, encoding="utf-8", errors="replace",
+                **_extra,
             )
             for line in proc.stdout:
                 self.output.emit(line.rstrip())
@@ -143,12 +189,20 @@ class GdlOutdatedBanner(QWidget):
 
     def _show_upgrade_info(self):
         from PyQt6.QtWidgets import QMessageBox
-        QMessageBox.information(
-            self, "Upgrade gallery-dl",
-            "Run the following command in a terminal to upgrade gallery-dl:\n\n"
-            "    pip install --upgrade gallery-dl\n\n"
-            "Then restart PixArchive.",
-        )
+        if _pip_available():
+            msg = (
+                "Run the following command in a terminal to upgrade gallery-dl:\n\n"
+                "    pip install --upgrade gallery-dl\n\n"
+                "Then restart PixArchive."
+            )
+        else:
+            msg = (
+                "Download the latest release from:\n\n"
+                f"    {CODEBERG_RELEASES_URL}\n\n"
+                "Replace your existing gallery-dl executable with the new one,\n"
+                "then restart PixArchive."
+            )
+        QMessageBox.information(self, "Upgrade gallery-dl", msg)
 
 
 # ── Dialog ────────────────────────────────────────────────────────────────────
@@ -169,6 +223,7 @@ class FirstRunDialog(QDialog):
         self.setMinimumHeight(380)
         self.setWindowFlags(self.windowFlags() & ~Qt.WindowType.WindowContextHelpButtonHint)
         self._found_cmd: str = "gallery-dl"
+        self._check_ok: bool = False   # True only after a real successful check
         self._build_ui()
         self._start_check("gallery-dl")
 
@@ -188,7 +243,6 @@ class FirstRunDialog(QDialog):
         hl.setSpacing(14)
 
         # Full logo (with text) in the header
-        import os, sys
         if getattr(sys, "frozen", False):
             _base = sys._MEIPASS  # type: ignore[attr-defined]
         else:
@@ -279,10 +333,17 @@ class FirstRunDialog(QDialog):
         headline.setAlignment(Qt.AlignmentFlag.AlignCenter)
         v.addWidget(headline)
 
+        _has_pip = _pip_available()
+
         desc = QLabel(
             "PixArchive uses gallery-dl as its download engine.\n"
-            "You can install it automatically with pip, or locate it manually\n"
-            "if you already have it installed somewhere else."
+            + (
+                "You can install it automatically with pip, or locate it manually\n"
+                "if you already have it installed somewhere else."
+                if _has_pip else
+                "Download the latest release from Codeberg and place the executable\n"
+                "somewhere on your PATH, or locate it manually below."
+            )
         )
         desc.setWordWrap(True)
         desc.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -291,12 +352,21 @@ class FirstRunDialog(QDialog):
 
         v.addSpacing(8)
 
-        # Install button
+        # pip install button — shown only when pip is available
         self.btn_install = QPushButton("  ⬇  Install gallery-dl via pip")
         self.btn_install.setObjectName("btn_download")
         self.btn_install.setFixedHeight(38)
         self.btn_install.clicked.connect(self._start_install)
+        self.btn_install.setVisible(_has_pip)
+
+        # Codeberg button — shown when pip is not available
+        self.btn_codeberg = QPushButton("  🌐  Open gallery-dl releases page")
+        self.btn_codeberg.setObjectName("btn_download")
+        self.btn_codeberg.setFixedHeight(38)
+        self.btn_codeberg.clicked.connect(self._open_codeberg)
+        self.btn_codeberg.setVisible(not _has_pip)
         v.addWidget(self.btn_install)
+        v.addWidget(self.btn_codeberg)
 
         # Locate manually
         locate_row = QHBoxLayout()
@@ -390,17 +460,23 @@ class FirstRunDialog(QDialog):
     def _on_check_done(self, found: bool, version: str, cmd: str):
         if found:
             self._found_cmd = cmd
+            self._check_ok = True
             parsed = _parse_gdl_version(version)
             outdated = parsed < _GDL_MIN_VERSION and parsed != (0,)
 
             if outdated:
+                _upgrade_hint = (
+                    "Run:  pip install --upgrade gallery-dl  to update."
+                    if _pip_available() else
+                    f"Download the latest release from:\n{CODEBERG_RELEASES_URL}"
+                )
                 self.done_icon.setText("⚠")
                 self.done_icon.setStyleSheet("font-size:32pt; color: palette(bright-text);")
                 self.done_headline.setText("gallery-dl found, but it's outdated")
                 self.done_detail.setText(
                     f"Found: {cmd}\nVersion: {version}  "                    f"(minimum recommended: {_version_str(_GDL_MIN_VERSION)})\n\n"
-                    "Older versions may fail on sites that have updated their APIs.\n"
-                    "Run:  pip install --upgrade gallery-dl  to update."
+                    f"Older versions may fail on sites that have updated their APIs.\n"
+                    f"{_upgrade_hint}"
                 )
             else:
                 self.done_icon.setText("✓")
@@ -423,6 +499,17 @@ class FirstRunDialog(QDialog):
         path, _ = QFileDialog.getOpenFileName(self, "Locate gallery-dl executable")
         if path:
             self.custom_path.setText(path)
+
+    def _open_codeberg(self):
+        if sys.platform == "win32":
+            # os.startfile uses ShellExecute — no subprocess, no CMD flash.
+            # webbrowser.open() falls back to subprocess.Popen (no
+            # CREATE_NO_WINDOW) if os.startfile raises OSError, which
+            # would produce a CMD window briefly.
+            os.startfile(CODEBERG_RELEASES_URL)  # type: ignore[attr-defined]
+        else:
+            import webbrowser
+            webbrowser.open(CODEBERG_RELEASES_URL)
 
     def _start_install(self):
         self.stack.setCurrentIndex(2)
@@ -451,21 +538,26 @@ class FirstRunDialog(QDialog):
             self.done_icon.setText("✗")
             self.done_icon.setStyleSheet("font-size:32pt; color: palette(bright-text);")
             self.done_headline.setText("Installation failed")
-            self.done_detail.setText(
-                f"{message}\n\n"
-                "Try running:  pip install gallery-dl\n"
-                "in a terminal, then restart the app."
-            )
+            if _pip_available():
+                _fail_hint = "Try running:  pip install gallery-dl\nin a terminal, then restart the app."
+            else:
+                _fail_hint = f"Download gallery-dl manually from:\n{CODEBERG_RELEASES_URL}\nThen restart the app."
+            self.done_detail.setText(f"{message}\n\n{_fail_hint}")
             self.stack.setCurrentIndex(3)
             self.btn_primary.setEnabled(True)
             self.btn_primary.setText("Close")
             self.btn_skip.setVisible(False)
 
     def _on_primary(self):
-        if self._found_cmd:
+        if self._check_ok:
             from core.app_settings import get_settings
             get_settings().set("gallery_dl_path", self._found_cmd)
-        self.accept()
+            confirm_gdl_cmd(self._found_cmd)
+            self.accept()
+        else:
+            # Reached via the "Close" button after a failed install —
+            # no working gallery-dl was ever confirmed, so reject.
+            self.reject()
 
     def _on_skip(self):
         self.reject()
@@ -475,31 +567,35 @@ class FirstRunDialog(QDialog):
     @staticmethod
     def check_and_show(parent=None) -> bool:
         """
-        Check if gallery-dl is available. If found, return True immediately
-        without showing the wizard. If not found, show the setup wizard.
+        Return True if gallery-dl is available, showing the setup wizard if not.
 
-        Uses shutil.which() for an instant PATH check first, falling back to
-        a subprocess version call only when a custom path is configured.
+        Call order:
+          1. In-memory cache hit  → instant True, no I/O.
+          2. PATH / file check    → cheap filesystem check, no subprocess.
+          3. Wizard               → only when the binary is genuinely missing.
+
+        Call invalidate_gdl_cmd() from your download code whenever gallery-dl
+        fails so that the next call here re-runs the wizard.
         """
         import shutil
         from core.app_settings import resolve_gdl_cmd
-        cmd = resolve_gdl_cmd()
 
-        # Fast path: if it's a plain name (not a custom path), just check PATH
-        if cmd == "gallery-dl" and shutil.which("gallery-dl"):
+        # 1. Already confirmed this session — trust it.
+        if _confirmed_cmd is not None:
             return True
 
-        # Custom path or bundled binary — verify it actually runs
-        try:
-            r = subprocess.run(
-                [cmd, "--version"],
-                capture_output=True, text=True, timeout=2
-            )
-            if (r.stdout or r.stderr).strip():
-                return True
-        except Exception:
-            pass
+        cmd = resolve_gdl_cmd()
 
-        # Not found — show wizard
+        # 2. Lightweight existence check — no subprocess.
+        found = (
+            shutil.which(cmd) is not None   # plain name: search PATH
+            if cmd == "gallery-dl" else
+            os.path.isfile(cmd)             # custom path: just stat the file
+        )
+        if found:
+            confirm_gdl_cmd(cmd)
+            return True
+
+        # 3. Binary not found — show wizard.
         dlg = FirstRunDialog(parent)
         return dlg.exec() == QDialog.DialogCode.Accepted
