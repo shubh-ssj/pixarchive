@@ -53,7 +53,7 @@ class MainWindow(QMainWindow):
         self._hide_timer.setSingleShot(True)
         self._hide_timer.timeout.connect(self._hide_to_tray_if_minimized)
 
-        self.download_manager = DownloadManager()
+        self.download_manager = DownloadManager(parent=self)
         self.scheduler = Scheduler(self)
         self._build_menu()
         self._build_ui()
@@ -266,7 +266,7 @@ class MainWindow(QMainWindow):
         btn_about.clicked.connect(self.open_about)
         layout.addWidget(btn_about)
 
-        version_lbl = QLabel("v1.4.0")
+        version_lbl = QLabel(f"v{QApplication.applicationVersion()}")
         version_lbl.setObjectName("sidebar_version")
         layout.addWidget(version_lbl)
 
@@ -484,10 +484,15 @@ class MainWindow(QMainWindow):
         s = get_settings()
         self._manual_updater = UpdateChecker(gdl_cmd=s.get("gallery_dl_path", "gallery-dl"), parent=self)
         def _on_result(installed, latest):
+            from ui.dialogs.first_run import _pip_available, CODEBERG_RELEASES_URL
+            upgrade_hint = (
+                "Run:  pip install -U gallery-dl"
+                if _pip_available() else
+                f"Download the latest release from:\n{CODEBERG_RELEASES_URL}"
+            )
             QMessageBox.information(
                 self, "gallery-dl update available",
-                f"Installed: {installed}\nLatest:    {latest}\n\n"
-                f"Run:  pip install -U gallery-dl"
+                f"Installed: {installed}\nLatest:    {latest}\n\n{upgrade_hint}"
             )
         def _on_up_to_date(installed):
             QMessageBox.information(
@@ -508,7 +513,9 @@ class MainWindow(QMainWindow):
             self._tray_manager._tray.showMessage(
                 "gallery-dl update available",
                 f"Installed: {installed}  →  Latest: {latest}\n"
-                "Run: pip install -U gallery-dl",
+                + ("Run: pip install -U gallery-dl"
+                   if __import__("ui.dialogs.first_run", fromlist=["_pip_available"])._pip_available()
+                   else "Download from: codeberg.org/gallery-dl/gallery-dl/releases"),
                 QSystemTrayIcon.MessageIcon.Information,
                 6000,
             )
@@ -577,7 +584,7 @@ class MainWindow(QMainWindow):
     # ── Helpers ───────────────────────────────────────────────────────────────
 
     def _open_url(self, url: str):
-        import webbrowser
+        import sys, os, webbrowser
         browser = get_settings().get("preferred_browser", "")
         if browser:
             try:
@@ -585,7 +592,11 @@ class MainWindow(QMainWindow):
                 return
             except webbrowser.Error:
                 pass   # browser name not recognised — fall back to system default
-        webbrowser.open(url)
+        if sys.platform == "win32":
+            # os.startfile uses ShellExecute — no subprocess, no CMD flash.
+            os.startfile(url)  # type: ignore[attr-defined]
+        else:
+            webbrowser.open(url)
 
     def closeEvent(self, event):
         from core.job import JobStatus
