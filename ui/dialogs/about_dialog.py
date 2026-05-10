@@ -1,5 +1,6 @@
 from __future__ import annotations
 import subprocess
+import sys
 
 from PyQt6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
@@ -108,9 +109,11 @@ class _GdlVersionThread(QThread):
 
     def run(self):
         try:
+            _extra = {"creationflags": subprocess.CREATE_NO_WINDOW} if sys.platform == "win32" else {}
             r = subprocess.run(
                 [self._cmd, "--version"],
-                capture_output=True, text=True, timeout=5
+                capture_output=True, text=True, timeout=5,
+                **_extra,
             )
             v = (r.stdout or r.stderr).strip()
             self.result.emit(v or "unknown")
