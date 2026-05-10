@@ -23,7 +23,7 @@ from core.app_settings import get_settings
 
 # TODO: set these to the real GitHub org/repo before shipping
 # e.g. GITHUB_OWNER = "mikf", GITHUB_REPO = "pixarchive"
-GITHUB_OWNER = "pixarchive"
+GITHUB_OWNER = "shubh-ssj"
 GITHUB_REPO  = "pixarchive"
 API_URL      = f"https://api.github.com/repos/{GITHUB_OWNER}/{GITHUB_REPO}/releases/latest"
 
@@ -206,10 +206,12 @@ class UpdateChecker(QObject):
     def _on_latest(self, latest_tag: str):
         # Get the installed version by running gallery-dl --version
         try:
-            import subprocess
+            import subprocess, sys
+            _extra = {"creationflags": subprocess.CREATE_NO_WINDOW} if sys.platform == "win32" else {}
             r = subprocess.run(
                 [self._gdl_cmd, "--version"],
-                capture_output=True, text=True, timeout=5
+                capture_output=True, text=True, timeout=5,
+                **_extra,
             )
             installed = (r.stdout or r.stderr).strip()
         except Exception:
